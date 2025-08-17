@@ -13,13 +13,3 @@ TerraformとAnsibleを用いて、Azure上にLAMP構成のWebサーバを自動�
 1. TerraformでAzure上にUbuntu VMを作成
 2. AnsibleでLAMP環境を構築（index.php配備）
 3. Dev Container上で一連の作業が再現可能
-
-## ディレクトリ構成
-.
-├── .devcontainer/
-├── terraform/
-│ └── main.tf
-├── ansible/
-│ ├── inventory.ini
-│ └── lamp.yml
-└── README.md
