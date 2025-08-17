@@ -1,0 +1,25 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# Sensitive variables
+terraform.tfvars
+
+# Ansible
+*.retry
+
+# VSCode / Dev Container
+.vscode/
+.devcontainer/.env
+
+# Logs / misc
+*.log
+__pycache__/
+*.pyc

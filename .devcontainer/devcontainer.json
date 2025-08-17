@@ -1,0 +1,19 @@
+{
+  "name": "iac-dev-env",
+  "build": {
+    "dockerfile": "Dockerfile.dev"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.remote-containers",
+        "ms-python.python"
+
+      ]
+    }
+  },
+  "workspaceFolder": "/workspaces",
+  "mounts": ["source=${localWorkspaceFolder},target=/workspaces,type=bind"]
+}
