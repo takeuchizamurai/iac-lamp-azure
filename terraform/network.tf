@@ -19,10 +19,12 @@ resource "azurerm_subnet" "subnet" {
 
 resource "azurerm_public_ip" "pubip" {
   name                = "iac-pubip"
-  location            = var.location
+  location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  allocation_method   = "Static"
-  sku                 = "Basic"
+
+  allocation_method   = "Static"   # StandardはStatic必須
+  sku                 = "Standard" # ← ここがポイント（Basic→Standard）
+  # zones            = ["1","2","3"]  # 需要があればゾーン冗長化
 }
 
 resource "azurerm_network_interface" "nic" {

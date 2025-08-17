@@ -1,0 +1,79 @@
+---
+- hosts: web
+  become: yes
+  vars:
+    php_packages:
+      - php
+      - php-mysql
+      - libapache2-mod-php
+    mysql_root_password: "changeme"  # 後で変更推奨
+
+  tasks:
+    - name: Update apt cache
+    - apt:
+        update_cache: yes
+
+    - name: Install Apache, MySQL, PHP
+      apt:
+        name:
+          - apache2
+          - mariadb-server
+          - "{{ php_packages }}"
+        state: present
+
+    - name: Start & enable services
+      systemd:
+        name: "{{ item }}"
+        enabled: yes
+        state: started
+      loop:
+        - apache2
+        - mariadb
+
+    # 低メモリ向けMariaDB調整（B1ls/B1s想定）
+    - name: Create MySQL config dir
+      file:
+        path: /etc/mysql/conf.d
+        state: directory
+        mode: '0755'
+
+    - name: Drop-in low memory my.cnf
+      copy:
+        dest: /etc/mysql/conf.d/lowmem.cnf
+        content: |
+          [mysqld]
+          innodb_buffer_pool_size=64M
+          innodb_log_file_size=64M
+          max_connections=40
+          table_open_cache=200
+      notify: Restart MySQL
+
+    - name: Secure MariaDB (basic)
+      mysql_secure_installation:
+        login_user: root
+        login_password: ""
+        user: root
+        password: "{{ mysql_root_password }}"
+        login_host: localhost
+        change_root_password: yes
+        remove_anonymous_user: yes
+        disallow_root_login_remotely: yes
+        remove_test_database: yes
+      ignore_errors: yes  # 初回以外は失敗させない
+
+    - name: Create sample index.php
+      copy:
+        dest: /var/www/html/index.php
+        content: |
+          <?php phpinfo();
+
+    - name: Ensure firewall not blocking (ufw off)
+      ufw:
+        state: disabled
+      ignore_errors: yes
+
+  handlers:
+    - name: Restart MySQL
+      systemd:
+        name: mariadb
+        state: restarted
