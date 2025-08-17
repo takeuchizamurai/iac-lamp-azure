@@ -8,12 +8,18 @@ override.tf.json
 *_override.tf
 *_override.tf.json
 .terraform.lock.hcl
+tfplan
+*.tfstate.backup
+*.tfvars
+*.auto.tfvars
 
 # Sensitive variables
 terraform.tfvars
 
 # Ansible
 *.retry
+*.vault-pass
+ansible/ansible.cfg~   # エディタのバックアップ等
 
 # VSCode / Dev Container
 .vscode/
@@ -23,3 +29,11 @@ terraform.tfvars
 *.log
 __pycache__/
 *.pyc
+
+# SSH keys
+**/.ssh/
+id_rsa
+id_rsa.pub
+
+# その他
+.env

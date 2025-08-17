@@ -1,27 +1,50 @@
 ---
 - hosts: web
   become: yes
-  vars:
-    php_packages:
-      - php
-      - php-mysql
-      - libapache2-mod-php
-    mysql_root_password: "changeme"  # 後で変更推奨
 
-  tasks:
+  # ===== パスワード入力のルール =====
+  # 優先度: 1) -e mysql_root_password=...  2) 環境変数 MYSQL_ROOT_PW  3) 対話プロンプト
+  pre_tasks:
+    - name: Use env var if provided
+      set_fact:
+        mysql_root_password: "{{ lookup('env','MYSQL_ROOT_PW') }}"
+      when: mysql_root_password is not defined and lookup('env','MYSQL_ROOT_PW') | length > 0
+
+    - name: Prompt for MySQL root password (hidden)
+      pause:
+        prompt: "Enter MySQL root password"
+        echo: no
+      register: pw_prompt
+      when: mysql_root_password is not defined and (lookup('env','MYSQL_ROOT_PW') | length == 0)
+
+    - name: Set mysql_root_password from prompt
+      set_fact:
+        mysql_root_password: "{{ pw_prompt.user_input }}"
+      when: mysql_root_password is not defined and pw_prompt is defined
+
+    - name: Sanity check - ensure password is set
+      assert:
+        that:
+          - mysql_root_password is defined
+          - mysql_root_password | length >= 8
+        fail_msg: "mysql_root_password が未設定か短すぎます（8文字以上を推奨）"
+
     - name: Update apt cache
-    - apt:
+      apt:
         update_cache: yes
 
-    - name: Install Apache, MySQL, PHP
+  tasks:
+    - name: Install Apache, MariaDB, PHP (no extra collections)
       apt:
         name:
           - apache2
           - mariadb-server
-          - "{{ php_packages }}"
+          - php
+          - php-mysql
+          - libapache2-mod-php
         state: present
 
-    - name: Start & enable services
+    - name: Enable & start services
       systemd:
         name: "{{ item }}"
         enabled: yes
@@ -30,8 +53,8 @@
         - apache2
         - mariadb
 
-    # 低メモリ向けMariaDB調整（B1ls/B1s想定）
-    - name: Create MySQL config dir
+    # 低メモリ向けMariaDBチューニング（任意）
+    - name: Ensure MySQL config dir exists
       file:
         path: /etc/mysql/conf.d
         state: directory
@@ -48,18 +71,49 @@
           table_open_cache=200
       notify: Restart MySQL
 
-    - name: Secure MariaDB (basic)
-      mysql_secure_installation:
-        login_user: root
-        login_password: ""
-        user: root
-        password: "{{ mysql_root_password }}"
-        login_host: localhost
-        change_root_password: yes
-        remove_anonymous_user: yes
-        disallow_root_login_remotely: yes
-        remove_test_database: yes
-      ignore_errors: yes  # 初回以外は失敗させない
+    # ===== ここから「mysqlコマンド」で安全に初期化（コレクション不要） =====
+    - name: Set MySQL root password for localhost (switch from unix_socket)
+      shell: |
+        mysql --protocol=socket -u root <<'SQL'
+        ALTER USER 'root'@'localhost' IDENTIFIED BY '{{ mysql_root_password }}';
+        FLUSH PRIVILEGES;
+        SQL
+      args:
+        creates: /root/.mysql_root_password_set
+      register: set_root_pw
+      changed_when: set_root_pw.rc == 0
+      failed_when: false
+      no_log: true
+
+    - name: Mark root password set
+      file:
+        path: /root/.mysql_root_password_set
+        state: touch
+      when: set_root_pw.rc == 0
+
+    - name: Remove anonymous users
+      shell: |
+        mysql -uroot -p'{{ mysql_root_password }}' -e "DELETE FROM mysql.user WHERE user=''; FLUSH PRIVILEGES;"
+      no_log: true
+
+    - name: Disallow root remote login (drop non-localhost root)
+      shell: |
+        mysql -uroot -p'{{ mysql_root_password }}' <<'SQL'
+        DROP USER IF EXISTS 'root'@'%';
+        DROP USER IF EXISTS 'root'@'::1';
+        DROP USER IF EXISTS 'root'@'127.0.0.1';
+        FLUSH PRIVILEGES;
+        SQL
+      no_log: true
+
+    - name: Remove test database
+      shell: |
+        mysql -uroot -p'{{ mysql_root_password }}' <<'SQL'
+        DROP DATABASE IF EXISTS test;
+        DELETE FROM mysql.db WHERE Db='test' OR Db LIKE 'test\_%';
+        FLUSH PRIVILEGES;
+        SQL
+      no_log: true
 
     - name: Create sample index.php
       copy:
@@ -67,7 +121,7 @@
         content: |
           <?php phpinfo();
 
-    - name: Ensure firewall not blocking (ufw off)
+    - name: Disable ufw if present (NSGで制御前提)
       ufw:
         state: disabled
       ignore_errors: yes
